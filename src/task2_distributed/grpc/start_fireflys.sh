@@ -30,7 +30,7 @@ omega=${omega:-$DEFAULT_OMEGA}
 total=$((n * m))
 pids=()
 for id in $(seq 0 $((total - 1))); do
-  echo "Starting Firefly $id..."
+  # echo "Starting Firefly $id..."
   python3 fireflys.py --n "$n" --m "$m" --id "$id" --k "$k" --omega "$omega" &
   pids+=($!)
 done

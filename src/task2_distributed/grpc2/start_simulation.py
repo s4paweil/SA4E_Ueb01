@@ -20,7 +20,7 @@ for i in range(n):
             for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]
         ]
         firefly_processes.append(subprocess.Popen([
-            "python", "firefly.py",
+            "python", "fireflys.py",
             "--id", str(id),
             "--neighbors", *neighbors,
             "--observer", f"localhost:{observer_port}",
