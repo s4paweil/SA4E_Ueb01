@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+service Firefly {
+  rpc GetPhase (PhaseRequest) returns (PhaseResponse);
+}
+
+message PhaseRequest {
+  int32 id = 1;  // ID des anfragenden Glühwürmchens
+}
+
+message PhaseResponse {
+  float phase = 1;  // Aktuelle Phase des Glühwürmchens
+}

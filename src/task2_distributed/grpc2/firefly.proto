@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+service Firefly {
+  rpc SyncState (FireflyState) returns (FireflyState);
+  rpc ReportState (FireflyState) returns (Ack);
+}
+
+message FireflyState {
+  int32 id = 1;           // Firefly-ID
+  float phase = 2;        // Aktuelle Phase
+}
+
+message Ack {
+  string message = 1;     // Acknowledgment
+}
