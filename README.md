@@ -114,3 +114,5 @@ bash start_fireflys.sh -n 10 -m 10
 python observer.py --n 5 --m 5 --firefly-host 168.192.2.110
 bash start_fireflys.sh -n 5 -m 5 -k 0.75 -o 0.33
 ```
+
+![Screenshot from 2024-12-05 05-20-06](https://github.com/user-attachments/assets/f242ce4a-6d8c-419c-b1ec-4304ab1b8a6f)
