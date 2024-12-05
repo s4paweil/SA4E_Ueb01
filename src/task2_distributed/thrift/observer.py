@@ -1,54 +1,53 @@
-import grpc
-import fireflys_pb2
-import fireflys_pb2_grpc
+from gen_py.fireflys import FireflyService
+from thrift.transport import TSocket, TTransport
+from thrift.protocol import TBinaryProtocol
 import tkinter as tk
 import time
 import math
 from threading import Thread, Lock
 from concurrent.futures import ThreadPoolExecutor
 
+
 class Observer:
     def __init__(self, n, m, firefly_host="localhost"):
-        """
-        Initialisiert den Observer.
-        :param n: Anzahl der Zeilen im Gitter
-        :param m: Anzahl der Spalten im Gitter
-        :param firefly_host: Basisadresse der Fireflies (z. B. 'localhost' oder IP-Adresse)
-        """
         self.n = n
         self.m = m
-        self.firefly_host = firefly_host  # Basisadresse der Fireflies
-        self.phases = [0] * (n * m)  # Phasen aller Glühwürmchen
+        self.firefly_host = firefly_host
+        self.phases = [0] * (n * m)
+        self.running = True  # Kontroll-Flag für das Beenden
         self.executor = ThreadPoolExecutor(max_workers=10)  # Thread-Pool für parallele Abfragen
         self.latencies = []  # Liste zur Speicherung der Latenzen
         self.latency_lock = Lock()  # Lock für thread-sicheren Zugriff auf die Latenzliste
-        self.running = True  # Kontroll-Flag für das Beenden der Threads
 
     def fetch_phases(self):
-        """Fragt regelmäßig die Phasen aller Glühwürmchen ab."""
         def query_firefly(i):
-            """Hilfsfunktion, um die Phase eines einzelnen Glühwürmchens abzufragen."""
-            address = f"{self.firefly_host}:{5001 + i}"  # Dynamische Adresse basierend auf ID
             try:
                 start_time = time.time()  # Startzeit der Anfrage
-                with grpc.insecure_channel(address) as channel:
-                    stub = fireflys_pb2_grpc.FireflyStub(channel)
-                    response = stub.GetPhase(fireflys_pb2.PhaseRequest(id=i))
-                    end_time = time.time()  # Endzeit der Antwort
-                    latency = (end_time - start_time) * 1000  # Latenz in Millisekunden
+                transport = TSocket.TSocket(self.firefly_host, 5001 + i)
+                transport = TTransport.TBufferedTransport(transport)
+                protocol = TBinaryProtocol.TBinaryProtocol(transport)
+                client = FireflyService.Client(protocol)
 
-                    # Speichere die Latenz thread-sicher
-                    with self.latency_lock:
-                        self.latencies.append(latency)
+                transport.open()
+                response = client.getPhase(i)
+                end_time = time.time()  # Endzeit der Antwort
+                latency = (end_time - start_time) * 1000  # Latenz in Millisekunden
 
-                    self.phases[i] = response.phase  # Phase speichern
-            except grpc.RpcError:
-                pass  # Ignoriere Verbindungsfehler
+                # Speichere die Latenz thread-sicher
+                with self.latency_lock:
+                    self.latencies.append(latency)
+
+                self.phases[i] = response.phase  # Korrigierter Zugriff
+                transport.close()
+            except Exception as e:
+                print(f"Could not connect to Firefly {i}: {e}")
 
         while self.running:
-            # Parallele Abfragen aller Fireflies
-            self.executor.map(query_firefly, range(self.n * self.m))
-            time.sleep(0.08)  # Intervall zwischen Anfragen
+            # Parallele Abfragen mit Thread-Pool
+            futures = [self.executor.submit(query_firefly, i) for i in range(self.n * self.m)]
+            for future in futures:
+                future.result()  # Warten, bis alle Abfragen abgeschlossen sind
+            time.sleep(0.5)
 
     def calculate_and_print_latency_stats(self):
         """Berechnet und gibt die Latenzstatistiken aus."""
@@ -65,14 +64,12 @@ class Observer:
                     print("Latency Stats: No data collected in the last interval.")
 
     def visualize(self):
-        """Visualisiert die Zustände der Glühwürmchen."""
         root = tk.Tk()
         root.title("Firefly Observer")
 
         canvas = tk.Canvas(root, width=self.m * 50, height=self.n * 50)
         canvas.pack()
 
-        # Rechtecke für die Visualisierung erstellen
         rectangles = [[None for _ in range(self.m)] for _ in range(self.n)]
         for i in range(self.n):
             for j in range(self.m):
@@ -81,20 +78,19 @@ class Observer:
                 rectangles[i][j] = canvas.create_rectangle(x0, y0, x1, y1, fill='black')
 
         def update_gui():
-            """Aktualisiert die GUI basierend auf den Phasen."""
             if self.running:
                 for i in range(self.n):
                     for j in range(self.m):
                         idx = i * self.m + j
                         phase = self.phases[idx]
-                        color = int((math.sin(phase) + 1) * 127.5)  # Phase -> Farbe
+                        color = int((math.sin(phase) + 1) * 127.5)
                         canvas.itemconfig(rectangles[i][j], fill=f'#{color:02x}{color:02x}{color:02x}')
-                root.after(500, update_gui)  # Aktualisierungsintervall auf 500 ms gesetzt
+                root.after(500, update_gui)
 
         def on_close():
-            """Handler zum Beenden des Programms."""
+            """Beenden des Observers."""
             self.running = False
-            self.executor.shutdown(wait=False)  # Stoppe den Thread-Pool
+            self.executor.shutdown(wait=False)  # Thread-Pool schließen
             root.destroy()
 
         root.protocol("WM_DELETE_WINDOW", on_close)  # Schließen-Handler hinzufügen
@@ -102,10 +98,10 @@ class Observer:
         root.mainloop()
 
     def start(self):
-        """Startet die Phasenabfrage und die Visualisierung."""
         Thread(target=self.fetch_phases, daemon=True).start()
         Thread(target=self.calculate_and_print_latency_stats, daemon=True).start()
         self.visualize()
+
 
 if __name__ == "__main__":
     import argparse
@@ -113,9 +109,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Firefly Observer")
     parser.add_argument("--n", type=int, required=True, help="Anzahl der Zeilen")
     parser.add_argument("--m", type=int, required=True, help="Anzahl der Spalten")
-    parser.add_argument("--firefly-host", type=str, default="localhost", help="Host-Adresse der Fireflies (Standard: localhost)")
+    parser.add_argument("--firefly-host", type=str, default="localhost", help="Host-Adresse der Fireflies")
     args = parser.parse_args()
 
-    # Starte den Observer
     observer = Observer(args.n, args.m, firefly_host=args.firefly_host)
     observer.start()
